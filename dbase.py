@@ -7,11 +7,10 @@ from PIL import Image
 from  fastapi import Depends, status , HTTPException
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
-import schemas
+import schemas, ast
+from enum import Enum
 
-  
-  
-  
+
   
 class Authentication():
   def __init__(self):
@@ -34,19 +33,107 @@ class DataBase_Manager:
     self.pris = self.bot_db.Prisoners
     self.cases = self.bot_db.Court_Cases
     self.guard = self.bot_db.Guards
+    self.vds = self.bot_db.Visitings
     #self.medical_records = self.bot_db.Medical_Records
     self.crypto_cont = CryptContext(schemes = ["bcrypt"], deprecated = "auto")
-  def inserting_documents(self, info):
-    return True,info if self.pris.insert_one({ "Name" : info[0],"Surname": info[1], "details" : info[2]}) else False
+  
+  def create_dbs(self):
+    #db.runCommand( { collMod: "users", validator: {}})
+    self.validators = {
+      "Prisoners" :{
+        "$jsonSchema": {
+            "bsonType": "object",
+            "additionalProperties": True,
+            "required": ["Name", "Photo", "Date of Birth", "Prisoner ID", "Village","Sentence Length", "Date of admission" , "Medical Details","Case file number","Gender",'Release Date'],
+            "properties": { "Name": {"bsonType": "string"}, "Photo": {"bsonType": "binData"},"Date of Birth": {"bsonType": "string"},"Release Date" : {"bsonType": "string"},
+              "Prisoner ID": {"bsonType": "int"},"Village": {"bsonType": "string"},"Sentence Length": {"bsonType": "string"},"Gender" : { "enum": ["Male", "Female"]},
+              "Date of admission": {"bsonType": "string"},"Date Released": {"bsonType": ["null", "string"]},"Case file number" : {"bsonType": "int"},
+              'Release Date' : {"bsonType": "string"},"Medical Details": {"bsonType": "object","items": {"bsonType": "string"}}  }  }  },
+                  
+      "Cases" :{
+                "$jsonSchema": {
+                  "bsonType": "object",
+                  "required": ["Case File Number","Associated Inmates","Offense Details","Risk Assessment", "Case Manager"],
+                  "properties": {
+                    "Case File Number": {"bsonType": "int","description": "Case file number"},
+                    "Associated Inmates": {"bsonType": "object" },
+                    "Offense Details": {"bsonType": "string","description": "User Password"},
+                    "Risk Assessment": {"bsonType": "string","description": "User Password"},
+                    "Case Manager": {"bsonType": "object","items": {"bsonType": "string"}}}     }  
+                },
+      
+      "Users": {
+                "$jsonSchema": {
+                  "bsonType": "object",
+                  "required": ["Name","Position","Password"],
+                  "properties": {
+                    "Name": {
+                      "bsonType": "string",
+                      "description": "Name of the user"
+                    },
+                    "Position": {
+                      "bsonType": "string",
+                      "description": "Another field of string type"
+                    },
+                    "Password": {
+                      "bsonType": "string",
+                      "description": "User Password"
+                    }
+                  }
+                }
+                },
+      
+      "Visitings": {
+        "$jsonSchema": {
+                  "bsonType": "object",
+                  "required": ["Name","Prisoner ID","Dates"],
+                  "properties": {
+                    "Name": {
+                      "bsonType": "string",
+                      "description": "Name of the user"
+                    },
+                    "Prisoner ID": {
+                      "bsonType": "string",
+                      
+                    },
+                    "Dates": { "bsonType": "object",
+                              "required": ["Visitor's Name","Visitor's Number","Relatopnship","Items brought"],
+                              "properties": {
+                                  "Date" : {"bsonType": "string"},
+                                  "Visitor's Name": {"bsonType": "string"},
+                                  "Visitor's Number" :{"bsonType": "string"},
+                                  "Relatopnship" : {"bsonType": "string"},
+                                  "Items brought" : {"bsonType": "array",  "items": {"bsonType": "string","description": "Each item in the array must be a string"}}
+                              }  }
+                      }
+                    }
+                  }
+      
+      }
+    
+    self.bot_db.create_collection("Visitings",validator= self.validators["Visitings"],validationLevel="strict")
+    #self.bot_db.create_collection("Prisoners",validator= self.validators["Prisoners"],validationLevel="strict",) 
+    #self.bot_db.create_collection("Court_Casesz",validator= self.validators["Cases"],validationLevel="strict",validationAction = "error" )
+  
+  def find_by_date(self, info):
+    person = self.pris.find({info[0]: info[1]},  projection = {"_id": 0, "Photo" : 0} )
+    return person if person else None
 
+
+  def visitings(self,info):
+    return self.vds.insert_one({"Name" : info[0],"Prisoner ID" : info[1],"Dates" : {"Date" : info[2], "Visitor's Name": info[3], "Visitor's Number" : info[4], "Relatopnship" : info[5], "Items brought" : info[6]}} )
+    
   def insert_prisoner(self, info):
-    return True if self.pris.insert_one({ "Name" : info[0],"Photo": info[6] , "Date of Birth" : info[1], "Prison ID" :info[2], "Village" :  info[3] ,"Sentence Length"  : info[4], "Release Date" : info[5], "Medical Details" : info[7] }) else False
+    return True if self.pris.insert_one({ "Name" : info[0],"Photo": info[6] , "Date of Birth" : info[1], "Prisoner ID" :info[2],  "Case file number" : info[8] ,"Gender": info[9] , "Village" :  info[3] ,"Sentence Length"  : info[4], "Date of admission" : info[5], "Medical Details" : ast.literal_eval(info[7]), 'Release Date' : info[10] }) else False
+    pass
 
-  def find(self,chat_id = None):  
-    hist = self.pris.find_one({"_id": ObjectId("654d5a263d98904788854490")},  projection = {"_id": 0} )
-    if hist:
-      return hist
+  def find(self, info):  
+    if info[0] == "_id":
+      person = self.pris.find_one({"_id": ObjectId(info[1])},  projection = {"_id": 0} )
+      
+      return person if person else None
 
+    
   def update(self,info):
     #checking if the id is presnt in the database
     self.user = self.find(info[0])
@@ -86,11 +173,10 @@ class DataBase_Manager:
       return data[1]
     return "Prisoner not found" 
   
+  
 
 class Access(DataBase_Manager):
   def __init__(self):
-    
-    
     self.secrete_key = "dfjfhdweiou438923ygdhwbaskllw12398ue"
     self.ALGORITHM = "HS256"
     #ACCESS_TOKEN_EXPIRE_MINUTES = settings.access_token_expire_minutes

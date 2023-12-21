@@ -1,12 +1,15 @@
 from fastapi import FastAPI, File, UploadFile, Depends, status, APIRouter, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
-from pydantic import BaseModel 
-from typing import Optional, Annotated, List
+from pydantic import BaseModel, Field
+from typing import Optional, Annotated, Dict, List,Any
 from bson.objectid import ObjectId
 from datetime import datetime,timedelta
-import dbase as db, codecs,schemas
+import dbase as db, codecs,schemas, pendulum
 from dataclasses import dataclass
 from passlib.context import CryptContext
+from datetime import date, datetime
+
+
 
 
 router = APIRouter(tags=['Authentication'])
@@ -14,6 +17,15 @@ app = FastAPI()
 authenticator = db.Authentication()
 dbase = db.DataBase_Manager()
 acc = db.Access()
+
+class tsiku(BaseModel):
+    day : date
+    
+class medic_details(BaseModel):
+    HIV : str
+    Malaria  : str
+    Height : int
+    Other : str
 class Item(BaseModel):
     name : str
     Surname :str
@@ -30,22 +42,35 @@ class USer_data(BaseModel):
     password : str
     
 
+class visiting_data(BaseModel):
+     
+    Name : str
+    ID : int
+    Visitors_Name : str
+    Visitors_Number : int
+    Relatopnship : str
+    Items : List[str] = Field(default_factory=list)
+
 class PrisonerDetails(BaseModel):
     name : str 
     dateOfBrth : str 
+    Gender : str
+    #Date_of_admission : date 
+    #Date_Released : date
     prisonID : int 
     village : str
     sentenceLength : str 
-    releaseDate : str
+    releaseDate : date
     Case_file_number : int
-    medical_details : list[str]
+    #medical_details : List[str] = Field(default_factory=list)
+    medical_details: Any = Field(default_factory=Dict)
     
 class CaseMgmt_data(BaseModel):
     FileNumber : int
-    involved_inmates : list
+    involved_inmates : dict
     Offense_details : str
     Risk_assessment : str
-    Case_mngr : Optional[str]
+    Case_mngr : dict
  
 class Guards_data(BaseModel):
     name : str
@@ -69,17 +94,8 @@ data = {}
 async def root():
     return {"message": "Hello World"}
 
-@app.get("/data/{id}")
-async def root():    
-    return {"data": dbase.find()}
-
-@app.post("/insert/{id}")
-async def add_new(id : int,item : Item, get_user : int = Depends(acc.get_current_user)):
-    dbase.inserting_documents([item.name, item.Surname, item.details])
-    return item
-
-@app.get("/all_data")
-async def get_all_data(get_user : int = Depends(acc.get_current_user)):
+@app.get("/all_prisoners")
+async def all_prisoners(get_user : int = Depends(acc.get_current_user)):
     docs = []
     for doc in dbase.find_zose():
         docs.append(doc)
@@ -94,17 +110,12 @@ async def update(item :Item, get_user : int = Depends(acc.get_current_user)):
 
 @app.post("/new_user/" )
 async def new_user(data : USer_data,get_user : int = Depends(acc.get_current_user)):
-    print(get_user)
     if get_user == "admin":
         New_user = dbase.create_user([data.username, data.position, data.password])  
         return New_user if new_user else None
     else:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='USER IS NOT AUTHORISED TO PROCEED WITH THIS OPERATION')
 
-@app.post("/new_prisoner/")
-async def insert_prisoner( file: PrisonerDetails, get_user : int = Depends(acc.get_current_user)):
-    dbase.insert_prisoner([file.name,  file.dateOfBrth, file.prisonID , file.village, file.sentenceLength ,file.releaseDate, file.medical_details])
-    return file
 
 
 @app.post("/new_case/")
@@ -117,16 +128,55 @@ async def insert_case(file : CaseMgmt_data,get_user : int = Depends(acc.get_curr
 async def new_guard(file : Guards_data, get_user : int = Depends(acc.get_current_user)):
     dbase.new_guard([file.name, file.contact, file.employee_id,file.village])
     
-@app.post("/add_picture/", response_model= None)
-def new_prisoner_picture( photo: UploadFile, file : PrisonerDetails = Depends() , user_id : int = Depends(acc.get_current_user) ):
-    dbase.insert_prisoner([file.name,  file.dateOfBrth, file.prisonID , file.village, file.sentenceLength ,file.releaseDate, photo.file.read(),file.medical_details])
+@app.post("/new_prisoner/", response_model= None)
+def new_prisoner( photo: UploadFile, file : PrisonerDetails = Depends() ):# , user_id : int = Depends(acc.get_current_user) ):
+    
+    addmission_date = pendulum.now("Africa/Maputo").to_formatted_date_string()
+    release_d = pendulum.instance(file.releaseDate).to_formatted_date_string()
+    dbase.insert_prisoner([file.name,  file.dateOfBrth, file.prisonID , file.village, file.sentenceLength ,addmission_date, photo.file.read(),file.medical_details, file.Case_file_number, file.Gender, release_d])
     #prisoner_info = codecs.decode(file.file.read(), "latin-1")   
     return file
 
 @app.post("/edit_medical_report")
-async def edit_medical_report(file: MedicReport):
+async def edit_medical_report(file: MedicReport, user_id : int = Depends(acc.get_current_user)):
     return dbase.update_prisoner_medical_records([file.prisoner_id, file.report])
     
+@app.post("/edit_case_file")
+async def case_file_editor(file: CaseMgmt_data , user_id : int = Depends(acc.get_current_user)):
+    pass
+
+@app.post("/new_dbs")
+async def create_dbs():
+    dbase.create_dbs()
+    
+@app.post("/find/release")
+async def find_by_date_of_release(file : tsiku):
+    date = pendulum.instance(file.day).to_formatted_date_string()
+    prisoners, results =[],dbase.find_by_date(["Release Date", date])
+    
+    if results:
+        for pris in results:
+            prisoners.append(pris)
+            
+    return prisoners
+
+
+@app.post("/find/admission")
+async def find_by_admission_date(file : tsiku):
+    
+    date = pendulum.instance(file.day).to_formatted_date_string()
+    prisoners, results =[], dbase.find_by_date(["Date of admission", date])
+    if results:
+        for pris in results:
+            prisoners.append(pris)
+            
+    return prisoners
+
+@app.post("/visitings")
+async def visitings(details : visiting_data):
+    Date = pendulum.now("Africa/Maputo").to_formatted_date_string()
+    return True if dbase.visitings([details.Name, str(details.ID) ,Date, details.Visitors_Name ,  str(details.Visitors_Number) , details.Relatopnship, details.Items]) else False
+
 
 @app.post("/login/")
 def login(user_credentials:  USer_data= Depends() ):
