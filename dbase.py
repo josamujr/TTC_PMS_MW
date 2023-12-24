@@ -11,6 +11,15 @@ import schemas, ast
 from enum import Enum
 
 
+def exception_handler(func):
+  def main(*args,**kwargs):
+    try:
+      func(*args,**kwargs)
+      
+    except Exception as e:
+      raise e
+    
+  return main
   
 class Authentication():
   def __init__(self):
@@ -119,7 +128,7 @@ class DataBase_Manager:
     person = self.pris.find({info[0]: info[1]},  projection = {"_id": 0, "Photo" : 0} )
     return person if person else None
 
-
+  @exception_handler
   def visitings(self,info):
     return self.vds.insert_one({"Name" : info[0],"Prisoner ID" : info[1],"Dates" : {"Date" : info[2], "Visitor's Name": info[3], "Visitor's Number" : info[4], "Relatopnship" : info[5], "Items brought" : info[6]}} )
     
@@ -143,9 +152,13 @@ class DataBase_Manager:
   def create_user(self,details):
     return details if self.user.insert_one({"Name" : details[0], "Position" : details[1], "Password" : self.crypto_cont.hash(details[2])}) else "User Registration failed"
 
+  #@exception_handler
   def find_user(self, username):
     self.found = self.user.find_one({"Name" : username}) 
-    return self.found["Name"],self.found["Password"], self.found["Position"] if self.found else None
+    if self.found:
+      return self.found["Name"],self.found["Password"], self.found["Position"]  
+    else:
+      return None
     
     
   def find_zose(self):
@@ -162,6 +175,7 @@ class DataBase_Manager:
     self.cases.insert_one({"Case File Number" : data[0], "Associated Inmates" : data[1],"Offense Details" : data[2], "Risk Assessment" : data[3], "Case Manager" : data[4]  })
     return data
   def new_guard(self, data):
+    
     self.guard.insert_one({"Name" : data[0], "Contact" : data[1], "Employee Id" : data[2], "Village" : data[3]})
     return data
   def update_prisoner_medical_records(self,data):
@@ -205,9 +219,3 @@ class Access(DataBase_Manager):
       self.TOKEN = self.verify_access_token(token, self.credential_exceptopn)
       #self.user = self.find_user(self.TOKEN.id)
       return self.TOKEN
-
-  
-#dbms = DataBase_Manager()
-#print(type(dbms.find_user("defloat")["Password"]))
-#cc= Access()
-#print(acc.create_token({"username": "defloat", "Authority": "Chief Founder" }))

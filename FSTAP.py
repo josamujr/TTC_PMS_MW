@@ -10,8 +10,6 @@ from passlib.context import CryptContext
 from datetime import date, datetime
 
 
-
-
 router = APIRouter(tags=['Authentication'])
 app = FastAPI()
 authenticator = db.Authentication()
@@ -43,7 +41,6 @@ class USer_data(BaseModel):
     
 
 class visiting_data(BaseModel):
-     
     Name : str
     ID : int
     Visitors_Name : str
@@ -90,10 +87,6 @@ class credentials(BaseModel):
     password : str
     
 data = {}
-@app.get("/")
-async def root():
-    return {"message": "Hello World"}
-
 @app.get("/all_prisoners")
 async def all_prisoners(get_user : int = Depends(acc.get_current_user)):
     docs = []
@@ -129,7 +122,7 @@ async def new_guard(file : Guards_data, get_user : int = Depends(acc.get_current
     dbase.new_guard([file.name, file.contact, file.employee_id,file.village])
     
 @app.post("/new_prisoner/", response_model= None)
-def new_prisoner( photo: UploadFile, file : PrisonerDetails = Depends() ):# , user_id : int = Depends(acc.get_current_user) ):
+def new_prisoner( photo: UploadFile, file : PrisonerDetails = Depends() , user_id : int = Depends(acc.get_current_user) ):
     
     addmission_date = pendulum.now("Africa/Maputo").to_formatted_date_string()
     release_d = pendulum.instance(file.releaseDate).to_formatted_date_string()
@@ -141,16 +134,13 @@ def new_prisoner( photo: UploadFile, file : PrisonerDetails = Depends() ):# , us
 async def edit_medical_report(file: MedicReport, user_id : int = Depends(acc.get_current_user)):
     return dbase.update_prisoner_medical_records([file.prisoner_id, file.report])
     
-@app.post("/edit_case_file")
-async def case_file_editor(file: CaseMgmt_data , user_id : int = Depends(acc.get_current_user)):
-    pass
 
 @app.post("/new_dbs")
-async def create_dbs():
+async def create_dbs(get_user : int = Depends(acc.get_current_user)):
     dbase.create_dbs()
     
 @app.post("/find/release")
-async def find_by_date_of_release(file : tsiku):
+async def find_by_date_of_release(file : tsiku, get_user : int = Depends(acc.get_current_user)):
     date = pendulum.instance(file.day).to_formatted_date_string()
     prisoners, results =[],dbase.find_by_date(["Release Date", date])
     
@@ -162,7 +152,7 @@ async def find_by_date_of_release(file : tsiku):
 
 
 @app.post("/find/admission")
-async def find_by_admission_date(file : tsiku):
+async def find_by_admission_date(file : tsiku, get_user : int = Depends(acc.get_current_user)):
     
     date = pendulum.instance(file.day).to_formatted_date_string()
     prisoners, results =[], dbase.find_by_date(["Date of admission", date])
@@ -170,20 +160,23 @@ async def find_by_admission_date(file : tsiku):
         for pris in results:
             prisoners.append(pris)
             
-    return prisoners
+    return prisoners if prisoners != [] else "No prisoner was registered on that day" 
 
 @app.post("/visitings")
-async def visitings(details : visiting_data):
-    Date = pendulum.now("Africa/Maputo").to_formatted_date_string()
-    return True if dbase.visitings([details.Name, str(details.ID) ,Date, details.Visitors_Name ,  str(details.Visitors_Number) , details.Relatopnship, details.Items]) else False
+async def visitings(details : visiting_data, get_user : int = Depends(acc.get_current_user)):
+    try:
+        Date = pendulum.now("Africa/Maputo").to_formatted_date_string()
+        return True if dbase.visitings([details.Name, str(details.ID) ,Date, details.Visitors_Name ,  str(details.Visitors_Number) , details.Relatopnship, details.Items]) else False
 
+    except HTTPException as http_exception:
+        if http_exception.status_code == 422:
+            return 'Mbola a braz'
+        
 
 @app.post("/login/")
 def login(user_credentials:  USer_data= Depends() ):
     user_logged_in = dbase.find_user(user_credentials.username)
-    print(user_logged_in[2])
-
-    if user_logged_in:
+    if user_logged_in != None:
         #AUTHENTICATING THE PASSWORD
         crypto_cont = CryptContext(schemes = ["bcrypt"], deprecated = "auto")
         if  not crypto_cont.verify(user_credentials.password, user_logged_in[1]):
