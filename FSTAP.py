@@ -87,6 +87,11 @@ class credentials(BaseModel):
     password : str
     
 data = {}
+
+@app.post("/")
+async def root():
+    return "Takulanndilan kuno"
+
 @app.get("/all_prisoners")
 async def all_prisoners(get_user : int = Depends(acc.get_current_user)):
     docs = []
