@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, Annotated, Dict, List,Any
 from bson.objectid import ObjectId
 from datetime import datetime,timedelta
-import dbase as db, codecs,schemas, pendulum
+import dbase as db, codecs,schemas, pendulum, uvicorn
 from dataclasses import dataclass
 from passlib.context import CryptContext
 from datetime import date, datetime
@@ -188,3 +188,4 @@ def login(user_credentials:  USer_data= Depends() ):
         return {"TOKEN"  : acccess_Token, "Token Type" : "bearer", "User" :user_logged_in}
     else:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='INVALID CREDENTIALS')
+    
